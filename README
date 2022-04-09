@@ -1,0 +1,10 @@
+mlp.py: GNN (LTL), GNN (BA)
+MLPMLP.py: MLP (LTL), MLP (BA)
+MLPGNN.py: MLP (LTL), GNN (BA)
+GNNMLP.py: GNN (LTL), MLP (BA)
+
+GCNModelBA.py: GCN for BA
+GCNModelLTL.py: GCN for LTL
+MLPModelBA.py: MLP for BA
+MLPModelLTL.py: MLP for LTL
+
