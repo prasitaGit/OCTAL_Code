@@ -2,6 +2,7 @@ import random
 import torch
 import re
 import glob
+import time
 import convertTree
 import numpy as np
 from queue import Queue
@@ -13,6 +14,9 @@ data_listLTL = []
 datalen_LTL = []
 listalphs = np.zeros(26)
 listop = np.zeros(9)
+ltlTime = 0
+BATime = 0
+ltlformlist = []
 
 def distribution():
     #obtain distributions
@@ -27,13 +31,14 @@ def ltlTree(fltl):
     fileltl = open(fltl, "r")
     Lines1 = fileltl.readlines()
     maxlen = 0
-    ltlformlist = []
     countl = -1
+    ltlLocal = 0
     for line in Lines1:
         countl += 1
         form = line.strip()
         # print(form)
         ltlformlist.append(form)
+        start = time.time()
         obj = convertTree.Conversion(len(form))
         postfix = obj.infixToPostfix(form)
         convertTree.infixone = []
@@ -109,10 +114,11 @@ def ltlTree(fltl):
                 edgecount += 1
 
         maxid += 1
+        ltlLocal += (time.time() - start) 
         datalen_LTL.append(maxid)
         if (maxlen < maxid):
             maxlen = maxid
-        print("length: ", maxid)
+        #print("length: ", maxid)
         l_matt = np.ones((maxid, 64), dtype=float)
         for ind in range(maxid):
             l_matt[ind] = vmatt[ind]
@@ -123,9 +129,38 @@ def ltlTree(fltl):
         v_edgeat = np.ones((edgecount, 1), dtype=float)
         edge_attr = torch.tensor(v_edgeat)
         data = Data(x=ltl_features, edge_index=edge_index, edge_attr=edge_attr)
+        
         data_listLTL.append(data)
         fileltl.close()
+    print("total: ",ltlLocal)
+    ltlTime = ltlLocal
 
+        
+def setTwoThreeOnes(source, dest, ind, dicL, gLTL):
+    #i + 1 == 1 or i + 27 == 1
+    for i in range(26):
+        vEdgeBA = [index for index in dicL if dicL[index][i + 1] != 0 or dicL[index][i + 27] != 0] 
+        vEdgeLTL = [index + ind for index in range(len(gLTL.x)) if gLTL.x[index][i + 1] != 0 or gLTL.x[index][i + 27] != 0]
+        for vBA in vEdgeBA:
+            for eBA in vEdgeLTL:
+                source.append(vBA)
+                dest.append(eBA)
+                source.append(eBA)
+                dest.append(vBA)
+
+    return source,dest
+
+def setTwoThreeOnesZero(source,dest,dicL,gLTL,v,ind):
+    # true case only -> consider edges
+    vEdgeBA = [index for index in dicL if dicL[index][0] != 0]
+    vEdgeLTL = [index + ind for index in range(len(gLTL.x)) if gLTL.x[index][0] != 0]
+    for vBA in vEdgeBA:
+        for eBA in vEdgeLTL:
+            source.append(vBA)
+            dest.append(eBA)
+            source.append(eBA)
+            dest.append(vBA)
+    return source,dest
 
 def setTwoThree(source, dest, ind, dicL, gLTL):
 
@@ -171,11 +206,15 @@ def setData(ind, totVertex, gLTL, dictK, sourceTrans, destTrans, label, indexLTL
 def datasetConstruct(fltl, BAset, numneg = 1):
     distribution()
     ltlTree(fltl)
+    fYes = open("yesPairs","w")
+    fNo = open("noPairs","w")
+    baNames = []
     arrFilesBA =  glob.glob(BAset)
     iniSet = np.zeros((10000), dtype = int)
     finset = np.full((10000, 1000), -1)
     alphSet = np.zeros((10000), dtype = int)
     coun = 0
+    localBATime = 0
     arrFilesBA.sort(key=lambda var:[int(x) if x.isdigit() else x for x in re.findall(r'[^0-9]|[0-9]+', var)])
     outl = -1
     print(len(arrFilesBA))
@@ -207,9 +246,12 @@ def datasetConstruct(fltl, BAset, numneg = 1):
         strAcc = 'accept'
         strbod = 'BODY'
         strend = 'END'
+        startBA = time.time()
         for line in Lines:
             count = count + 1
             form = line.strip()
+            if(count == 3):
+                baNames.append(form)
             if(count == 4):
                 arrComp = form.split(" ")
                 #number of states of the automata
@@ -267,7 +309,11 @@ def datasetConstruct(fltl, BAset, numneg = 1):
                         elif(edge_comp[ind_edge] == 't'):
                             vAttp[0] = 1
                             vAttn[0] = 1
-                        #add edge from st to est, and dest to est and vice versa
+                    #add edge from st to est, and dest to est and vice versa
+                    #vAttp[64] = st
+                    #vAttp[65] = dest
+                    #vAttn[64] = st
+                    #vAttn[65] = dest
                     sTrans.append(st)
                     dTrans.append(est)
                     sTrans.append(est)
@@ -283,6 +329,7 @@ def datasetConstruct(fltl, BAset, numneg = 1):
                     counEdge += 1
 
         if(len(vSet) == 0):
+            print(filen)
             continue
         v =vSet[-1]
         initial_s = iniSet[outl]
@@ -315,30 +362,50 @@ def datasetConstruct(fltl, BAset, numneg = 1):
         for element in dTrans:
             dTransref.append(element)
 
-        sTrans, dTrans = setTwoThree(sTrans, dTrans, indk, dictP, gLTLTrue)
-        sTrans, dTrans = setTwoThreeZero(sTrans, dTrans, dictP, gLTLTrue, v, indk)
+        sTrans, dTrans = setTwoThreeOnes(sTrans, dTrans, indk, dictP, gLTLTrue)
+        sTrans, dTrans = setTwoThreeOnesZero(sTrans, dTrans, dictP, gLTLTrue, v, indk)
         setData(indk, totVertexp, gLTLTrue, dictP, sTrans, dTrans, 1, indk,outl + 1)
-        print("Positive Vertex bipartite BA: ", indk, " total: ", totVertexp, " ltl positive: ", len(gLTLTrue.x))
+
+        localBATime += (time.time() - startBA) 
+        #print("Positive Vertex bipartite BA: ", indk, " total: ", totVertexp, " ltl positive: ", len(gLTLTrue.x))
+        fYes.write(ltlformlist[outl])
+        fYes.write("\n")
+        fYes.write(baNames[-1])
+        fYes.write("\n\n")
+
+        fNo.write(ltlformlist[idneg])
+        fNo.write("\n")
+        fNo.write(baNames[-1])
+        fNo.write("\n\n")
 
         for gLTLFalse in falseSet:
+            print("negative outl: ",outl)
             sTransn = []
             dTransn= []
             for element in sTransref:
                 sTransn.append(element)
             for element in dTransref:
                 dTransn.append(element)
-            sTransn, dTransn = setTwoThree(sTransn, dTransn, indk, dictN, gLTLFalse)
-            sTransn, dTransn = setTwoThreeZero(sTransn, dTransn, dictN, gLTLFalse, v, indk)
+            sTransn, dTransn = setTwoThreeOnes(sTransn, dTransn, indk, dictN, gLTLFalse)
+            sTransn, dTransn = setTwoThreeOnesZero(sTransn, dTransn, dictN, gLTLFalse, v, indk)
             totVertexn = est + len(gLTLFalse.x)
-            print("Negative Vertex bipartite BA: ", indk, " total: ", totVertexn, " ltl negative: ", len(gLTLFalse.x))
+            #print("Negative Vertex bipartite BA: ", indk, " total: ", totVertexn, " ltl negative: ", len(gLTLFalse.x))
             setData(indk, totVertexn, gLTLFalse, dictN, sTransn, dTransn, 0, indk,idneg)
 
         print("\n\n")
         file1.close()
-
-    #torch.save(data_list,'syntheticDatasetDiverseTripartite.pt')
+    print(len(data_list))
+    fYes.close()
+    fNo.close()
+    BATime = localBATime
+    totalTime = ltlTime + BATime
+    timeperGraph = totalTime/len(arrFilesBA)
+    print("LTL diverse graph: ",ltlTime)
+    print("Time per Short graph: ",timeperGraph)
+    #torch.save(data_list,'syntheticDatasetNoNegShortTripartite.pt')
 
         
 
-datasetConstruct('LTLset/ltldiverseparan_removedFalse_modifiedUnique','BADiverseUnique/*')
+
+datasetConstruct('LTLset/ltldiverseparan_removedFalse_modifiedUnique','BADiverseUnique/*',1)
 
