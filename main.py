@@ -1,17 +1,20 @@
-import torch_geometric.loader
 from train import *
-#from mlp import *
+from mlp import *
 #from MLPGNN import *
 #from GNNMLP import * 
-from MLPMLP import * 
+#from MLPMLP import * 
 import random
 import torch
 import time
-from accValid import *
+import os
+from accAnalysis import *
+from accTest import *
 import pdb
 import argparse
+import torch_geometric
 from torch_geometric.data import Data
 from ogb.linkproppred import Evaluator
+import logging
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Interface for GRL_MCLTL framework')
@@ -25,20 +28,20 @@ if __name__ == '__main__':
     parser.add_argument('--hidden_dim', type=int, default=64, help='hidden dimension')
     parser.add_argument('--x_dim', type=int, default=0, help='dim of raw node features')
     parser.add_argument('--train_ratio', type=float, default=0.8, help='mask partial edges for training')
-    parser.add_argument('--valid_ratio', type=float, default=0.1, help='use partial valid set')
+    parser.add_argument('--valid_ratio', type=float, default=0.2, help='use partial valid set')
     parser.add_argument('--test_ratio', type=float, default=1.0, help='use partial test set')
     parser.add_argument('--metric', type=str, default='mrr', help='metric for evaluating performance',
                         choices=['auc', 'mrr', 'hit'])
-    parser.add_argument('--seed', type=int, default=2022, help='seed to initialize all the random modules')
+    parser.add_argument('--seed', type=int, default=2014, help='seed to initialize all the random modules')
     parser.add_argument('--device', type=int, default=7, help='gpu id')
-    parser.add_argument('--root_path', type=str, default='/homes/mukher39/scratch/', help='path to file')
+    parser.add_argument('--root_path', type=str, default='/homes/yinht/lfs/Workspace/GNNLTL_Code/', help='path to file')
 
     # model training
     parser.add_argument('--optim', type=str, default='adam', help='optimizer to use')
     parser.add_argument('--epoch', type=int, default=499, help='num of epoches')
     parser.add_argument('--percent', type=float, default=0.1, help='num of epoches')
     parser.add_argument('--eval_steps', type=int, default=20, help='number of steps to test')
-    parser.add_argument('--batch_size', type=int, default=32, help='mini-batch size (train)')
+    parser.add_argument('--batch_size', type=int, default=64, help='mini-batch size (train)')
     parser.add_argument('--batch_num', type=int, default=2000, help='mini-batch size (test)')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--dropout', type=float, default=0.1, help='dropout rate')
@@ -50,26 +53,25 @@ if __name__ == '__main__':
     args = parser.parse_args()
     #call dataset here
     #load dataset
-
-    
-    data_train_path = 'syntheticDatasetSmallTripartite.pt'
-    data_test_path = 'syntheticDatasetRes19Tripartite.pt'
+    data_train_path = 'syntheticDatasetDiverseTripartiteNew.pt'
+    data_test_path = 'syntheticDatasetRERSTripartite.pt'
     data_list = torch.load(f'{args.root_path}{data_train_path}')
     data_testAnalysis = torch.load(f'{args.root_path}{data_test_path}')
-
+    
     data_list = [data for data in data_list if data[0].edge_index.shape[1] < 100000]
+    data_testAnalysis = [data for data in data_testAnalysis if data[0].edge_index.shape[1] < 100000]
+    
+    
+    def set_random_seed(seedVal = 1):
+        seed = seedVal
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        np.random.seed(seed)
+        random.seed(seed)
+        os.environ['PYTHONHASHSEED'] = str(seed)
 
-    train_ratio = args.train_ratio
-    num_train = int(len(data_list)*train_ratio)
-    print(f"Train and valid: {len(data_list)} \n Test: {len(data_testAnalysis)}")
-    np.random.shuffle(data_list)
-    np.random.shuffle(data_testAnalysis)
-    data_train = data_list[:num_train]
-    data_valid = data_list[num_train:]
-    data_test = data_testAnalysis
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(device)
-    np.random.seed(args.seed)
 
     def neg_gen(dataset, neg=1):
         num_data = len(dataset)
@@ -112,37 +114,82 @@ if __name__ == '__main__':
     
     def dropNodes(dataset, percent):
         index = 0 
-        
+        dataZeros = [] 
         for data in dataset:
             nodes = data[0].x.shape[0]
             corrNum = int(percent * nodes)
+            print("Analyzing: ",index)
             if(corrNum > 0):
                 nodeList = random.sample(range(0, nodes), corrNum)
                 eList = dropEdgeList(data[0].edge_index,nodeList)
                 datan = Data(x=data[0].x, edge_index=eList)
-                dataset.append([datan, data[1],0])
+                dataZeros.append([datan, data[1],0])
                 
             index += 1
 
-        return dataset
+        finalSet = dataset + dataZeros
+        return finalSet
             
+   
+    for cexec in range(1):
+        #print("Seed Value: ",args.seed)
+        #np.random.seed(args.seed)
+        #seedVal = 4907 + cexec
+        #set_random_seed(seedVal)
+        #logFileName = "ShortRERSDrop15NIPS"+str(cexec + 2)+".log"
+        #print("Iteration: ",cexec," logger name: ",logFileName)
+        #create and configure logger - Level set to debug
+        #logging.basicConfig(filename=logFileName, format='%(asctime)s %(message)s', filemode='w', level=logging.DEBUG,           force=True)
+        #logger=logging.getLogger()
+ 
+        train_ratio = args.train_ratio
+        valid_ratio = args.valid_ratio
+        test_ratio = args.test_ratio
+        num_train = int(len(data_list)*train_ratio)
+        num_valid = int(len(data_list)*valid_ratio)
+        num_test = int(len(data_testAnalysis)*test_ratio)
+        #np.random.shuffle(data_list)
+        np.random.shuffle(data_testAnalysis)
+        data_train = data_list[:num_train]
+        #15%
+        #data_train = dropNodes(data_train,0.20)
+        data_valid = data_list[num_train:num_train + num_valid]
+        #generate negatives
+        #data_valid = neg_gen(data_valid)
+        #last N
+        data_test = data_testAnalysis[-num_test:]
+        for iexec in range(3):
+            #generate random seed values
+            seedVal = random.randint(100,10000)
+            set_random_seed(seedVal)
+            logFileName = "DRUndirectedNorm"+str(iexec + 1)+".log"
+            print("Iteration: ",cexec," logger name: ",logFileName)
+            #create and configure logger - Level set to debug
+            logging.basicConfig(filename=logFileName, format='%(asctime)s %(message)s', filemode='w', level=logging.DEBUG,      force=True)
+            logger=logging.getLogger()
 
-    #data_train = dropNodes(data_train,args.percent)
-    #print(data_train)
-    #pdb.set_trace()
-    #validSet = neg_gen(data_valid)
-    #testSet = neg_gen(data_test)
+            device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
+            logger.info("Device: "+str(device))
+            logger.info("Seed: "+str(seedVal))
+            #np.random.seed(args.seed)
 
-    print(f"#valid set: {len(data_valid)}, #test set: {len(data_test)}")
-    valid_loader = torch_geometric.loader.DataLoader(data_valid, batch_size=args.batch_size, shuffle = True)
-    test_loader = torch_geometric.loader.DataLoader(data_test, batch_size=args.batch_size, shuffle = True)
+            print(f"#train set: {len(data_train)}, #valid set: {len(data_valid)}, #test set: {len(data_test)}")
+            logger.info("Training set size: "+str(len(data_train))+" Validation set size: "+str(len(data_valid))+" Test set size:    "+str(len(data_test)))
+            #data_validAll = neg_gen(data_valid)
+            #print("Valid size: ",len(data_validAll))
+            valid_loader = torch_geometric.data.DataLoader(data_valid, batch_size=args.batch_size, shuffle = True)
+            test_loader = torch_geometric.data.DataLoader(data_test, batch_size=args.batch_size, shuffle = True)
 
-    #define models
-    modelClassifier = Classifier().to(device)
-    #call train
-    trainCode(modelClassifier, data_train, valid_loader, args, device)
-    #1 is the tag for test
-    start = time.time()
-    evaluator = Evaluator(name = 'ogbl-citation2')
-    acc = calcAccuracy(modelClassifier, test_loader, device)
-    print("Time: ",time.time() - start)
+            #define models
+            modelClassifier = Classifier().to(device)
+            #call train
+            start = time.time()
+            trainCode(modelClassifier, data_train, valid_loader, args, device, logger)
+            trainTime = time.time() - start
+            logger.info("Train time: "+str(trainTime))
+            #1 is the tag for test
+            evaluator = Evaluator(name = 'ogbl-citation2')
+            start = time.time()
+            acc = calcAccuracy(modelClassifier, test_loader, device, logger)
+            evalTime = time.time() - start
+            logger.info("Inference time: "+str(evalTime))

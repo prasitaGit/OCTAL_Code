@@ -2,7 +2,7 @@ import pdb
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch.nn import Sequential, Linear, ReLU, Dropout
+from torch.nn import Sequential, Linear, ReLU, Dropout, LeakyReLU
 from  GINModelBA import NetBA
 from GINModelLTL import NetLTL
 class Classifier(nn.Module):
@@ -15,6 +15,7 @@ class Classifier(nn.Module):
                 #nn.Flatten(),
                 Linear(256, 64),
                 ReLU(),
+                #Dropout(p=0.5),
                 Linear(64, 1)
                 )
         self.layerLink = Sequential(
