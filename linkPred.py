@@ -2,13 +2,13 @@ import pdb
 import torch
 from torch import nn
 from torch.nn import Sequential, Linear, ReLU
-from GCNModelBA import NetBA
-from MLPModelLTL import MLPLTL
+from GCNModel import NetBA
+from GCNModelLTL import NetLTL
 class Classifier(nn.Module):
     def __init__(self):
         super(Classifier,self).__init__()
         self.layer_BA = NetBA()
-        self.layer_LTL = MLPLTL()
+        self.layer_LTL = NetLTL()
         self.layers = Sequential(
                 #nn.Flatten(),
                 Linear(128, 64),

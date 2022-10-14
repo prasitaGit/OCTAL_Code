@@ -3,7 +3,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.nn import Sequential, Linear, ReLU, Dropout, LeakyReLU
-from  GINModelBA import NetBA
+from GCNModel import NetBA
 class Classifier(nn.Module):
     def __init__(self):
         super(Classifier,self).__init__()
@@ -24,14 +24,8 @@ class Classifier(nn.Module):
                )
     def forward(self, dataBA,num_nodes, num_edges, start_node, gid, checkStatus):
         '''Forward pass'''
-        #outBA = self.layer_BA(dataBA)
-        outBA = self.layer_BA(dataBA,num_nodes, num_edges, start_node, gid, checkStatus)
-        #outLTL = self.layer_LTL(dataLTL)
-        #pdb.set_trace()
+        outBA = self.layer_BA(dataBA)
         x = outBA
          
-        #x = torch.cat([outBA, outLTL], dim=-1)
-        #x = x.float()
-        #pdb.set_trace()
         x = self.layerLink(x)
         return x

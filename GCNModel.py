@@ -6,10 +6,10 @@ import torch.nn.functional as F
 from torch.nn import BatchNorm1d
 from torch.nn import Sequential, Linear, ReLU
 from torch_geometric.nn import GCNConv, global_mean_pool
-    
-class NetLTL(nn.Module):
-    def __init__(self, dropout = 0.1, in_channels = 62, dim = 256, out_channels = 128):#,init_eps=np.random.uniform(1.5, 99.5),learn_eps=True):
-        super(NetLTL, self).__init__()
+
+class NetBA(nn.Module):
+    def __init__(self, dropout = 0.1, in_channels = 66, dim = 256, out_channels = 128):#,init_eps=np.random.uniform(1.5, 99.5),learn_eps=True):
+        super(NetBA, self).__init__()
 
 
         self.dropout = dropout
@@ -23,7 +23,7 @@ class NetLTL(nn.Module):
 
     def forward(self, data):
 
-        x, edge_index, batch = data.x.float(), data.edge_index, data.batch.to(data.x.device)
+        x, edge_index, batch = data.x.float(), data.edge_index, data.batch
         x = self.conv1(x, edge_index)
         x = F.relu(x)
         x = self.conv2(x, edge_index)
@@ -35,5 +35,3 @@ class NetLTL(nn.Module):
         x = self.lin2(x)
 
         return x
-
-

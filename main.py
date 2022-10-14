@@ -1,13 +1,12 @@
 from train import *
+#from linkPred import *
+#from mlpExp import *
 from mlp import *
-#from MLPGNN import *
-#from GNNMLP import * 
-#from MLPMLP import * 
+#from mlpGCN import *
 import random
 import torch
 import time
 import os
-from accAnalysis import *
 from accTest import *
 import pdb
 import argparse
@@ -33,8 +32,10 @@ if __name__ == '__main__':
     parser.add_argument('--metric', type=str, default='mrr', help='metric for evaluating performance',
                         choices=['auc', 'mrr', 'hit'])
     parser.add_argument('--seed', type=int, default=2014, help='seed to initialize all the random modules')
-    parser.add_argument('--device', type=int, default=7, help='gpu id')
-    parser.add_argument('--root_path', type=str, default='/homes/yinht/lfs/Workspace/GNNLTL_Code/', help='path to file')
+    parser.add_argument('--device', type=int, default=6, help='gpu id')
+    parser.add_argument('--root_path', type=str, default='/homes/yinht/lfs/Workspace/OCTAL/GNNLTL_NeurIPS_Code/', help='path to file')
+    parser.add_argument('--data_train_path', type=str, default='ShortDirected.pt', help='path to file')
+    parser.add_argument('--data_test_path', type=str, default='RERSDirected.pt', help='path to file')
 
     # model training
     parser.add_argument('--optim', type=str, default='adam', help='optimizer to use')
@@ -53,15 +54,21 @@ if __name__ == '__main__':
     args = parser.parse_args()
     #call dataset here
     #load dataset
-    data_train_path = 'syntheticDatasetDiverseTripartiteNew.pt'
-    data_test_path = 'syntheticDatasetRERSTripartite.pt'
-    data_list = torch.load(f'{args.root_path}{data_train_path}')
-    data_testAnalysis = torch.load(f'{args.root_path}{data_test_path}')
+    data_list = torch.load(f'{args.root_path}{args.data_train_path}')
+    data_testAnalysis = torch.load(f'{args.root_path}{args.data_test_path}')
     
     data_list = [data for data in data_list if data[0].edge_index.shape[1] < 100000]
     data_testAnalysis = [data for data in data_testAnalysis if data[0].edge_index.shape[1] < 100000]
     
     
+    def generateDistribution(data_gen,saveFileName):
+        fDist = open(saveFileName,'w')
+        for dataBA,dataLTL,label,num_nodes,num_edges,start_node,gid in data_gen:
+            sizeLTL = num_nodes - start_node
+            #write
+            fDist.write(str(sizeLTL)+","+str(num_nodes)+","+str(num_edges)+"\n")
+        fDist.close()
+
     def set_random_seed(seedVal = 1):
         seed = seedVal
         torch.manual_seed(seed)
@@ -132,15 +139,6 @@ if __name__ == '__main__':
             
    
     for cexec in range(1):
-        #print("Seed Value: ",args.seed)
-        #np.random.seed(args.seed)
-        #seedVal = 4907 + cexec
-        #set_random_seed(seedVal)
-        #logFileName = "ShortRERSDrop15NIPS"+str(cexec + 2)+".log"
-        #print("Iteration: ",cexec," logger name: ",logFileName)
-        #create and configure logger - Level set to debug
-        #logging.basicConfig(filename=logFileName, format='%(asctime)s %(message)s', filemode='w', level=logging.DEBUG,           force=True)
-        #logger=logging.getLogger()
  
         train_ratio = args.train_ratio
         valid_ratio = args.valid_ratio
@@ -151,18 +149,13 @@ if __name__ == '__main__':
         #np.random.shuffle(data_list)
         np.random.shuffle(data_testAnalysis)
         data_train = data_list[:num_train]
-        #15%
-        #data_train = dropNodes(data_train,0.20)
         data_valid = data_list[num_train:num_train + num_valid]
-        #generate negatives
-        #data_valid = neg_gen(data_valid)
-        #last N
         data_test = data_testAnalysis[-num_test:]
-        for iexec in range(3):
+        for iexec in range(1):
             #generate random seed values
             seedVal = random.randint(100,10000)
             set_random_seed(seedVal)
-            logFileName = "DRUndirectedNorm"+str(iexec + 1)+".log"
+            logFileName = "GINDirected"+str(iexec + 1)+".log"
             print("Iteration: ",cexec," logger name: ",logFileName)
             #create and configure logger - Level set to debug
             logging.basicConfig(filename=logFileName, format='%(asctime)s %(message)s', filemode='w', level=logging.DEBUG,      force=True)
@@ -175,21 +168,14 @@ if __name__ == '__main__':
 
             print(f"#train set: {len(data_train)}, #valid set: {len(data_valid)}, #test set: {len(data_test)}")
             logger.info("Training set size: "+str(len(data_train))+" Validation set size: "+str(len(data_valid))+" Test set size:    "+str(len(data_test)))
-            #data_validAll = neg_gen(data_valid)
-            #print("Valid size: ",len(data_validAll))
             valid_loader = torch_geometric.data.DataLoader(data_valid, batch_size=args.batch_size, shuffle = True)
             test_loader = torch_geometric.data.DataLoader(data_test, batch_size=args.batch_size, shuffle = True)
 
             #define models
             modelClassifier = Classifier().to(device)
             #call train
-            start = time.time()
+            #trainCode(modelClassifier, data_list, valid_loader, args, device, logger)
             trainCode(modelClassifier, data_train, valid_loader, args, device, logger)
-            trainTime = time.time() - start
-            logger.info("Train time: "+str(trainTime))
             #1 is the tag for test
             evaluator = Evaluator(name = 'ogbl-citation2')
-            start = time.time()
             acc = calcAccuracy(modelClassifier, test_loader, device, logger)
-            evalTime = time.time() - start
-            logger.info("Inference time: "+str(evalTime))

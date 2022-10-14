@@ -1,7 +1,9 @@
 import torch
 import os
+import pdb
 import networkx as nx
 import matplotlib.pyplot as plt
+from netgraph import Graph
 from torch import nn
 from torch.nn import init
 from random import random
@@ -18,11 +20,11 @@ class NetBA(nn.Module):
         self.dropout = dropout
 
         self.conv1 = GINConv(Sequential(Linear(in_channels,dim),BatchNorm1d(dim)))
-        self.conv2 = GINConv(Sequential(Linear(dim,128), BatchNorm1d(128)))
-        self.conv3 = GINConv(Sequential(Linear(128,32),BatchNorm1d(32)))
+        self.conv2 = GINConv(Sequential(Linear(dim,dim), BatchNorm1d(dim)))
+        self.conv3 = GINConv(Sequential(Linear(dim,dim),BatchNorm1d(dim)))
 
-        self.lin1 = Linear(32, 32)
-        self.lin2 = Linear(32, out_channels)
+        self.lin1 = Linear(dim, 128)
+        self.lin2 = Linear(128, out_channels)
 
     def forward(self, data, node_num, edge_num, start_node, gid, checkStatus):
 
@@ -38,14 +40,14 @@ class NetBA(nn.Module):
         x = self.lin2(x)
         x = x.sigmoid()
         if(checkStatus == True):
-            self.drawGraph(self, x, edge_index, node_num, edge_num, start_node, gid, [7536,7537])
+            self.drawGraph(x, edge_index, node_num, edge_num, start_node, gid, [1])
         x = global_mean_pool(x, batch)
 
         return x
 
     
 
-    def saveGraph(vAttributes, eList, gid, start_node):
+    def saveGraph(self,vAttributes, edgeList, gid, start_node):
         G = nx.Graph()
         for ind in range(len(vAttributes)):
             color ='green'
@@ -53,25 +55,23 @@ class NetBA(nn.Module):
                 color = 'red'
             G.add_node(ind,color=color)
 
-        for ind in range(len(eList)):
+        for ind in range(len(edgeList)):
             color = 'black'
             if ((edgeList[ind][0] >= start_node or edgeList[ind][1] >= start_node) and not(edgeList[ind][0] >= start_node and edgeList[ind][1] >= start_node)):
-                color='red'
+                color='blue'
             G.add_edge(edgeList[ind][0],edgeList[ind][1],color=color)
-
         #construct graph
         ecolors = nx.get_edge_attributes(G,'color').values()
         ncolors = nx.get_node_attributes(G,'color').values()
-
-        pos = nx.spring_layout(G, k=1.0, iterations=20)
+        if(len(G.nodes()) > len(ncolors)):
+            pdb.set_trace()
+        pos = nx.spring_layout(G,k=1.0)
+        plt.figure(figsize=(15,15))
         nx.draw_networkx(G,pos,edge_color=ecolors,node_color=ncolors)
-        
-        fname = 'Graph'+str(len(os.listdir('/homes/yinht/lfs/Workspace/OCTAL/GNNLTL_NeurIPS_Code/GraphImages/'+str(gid))))
+        fname = 'Graph'+str(len(os.listdir('/homes/yinht/lfs/Workspace/OCTAL/GNNLTL_NeurIPS_Code/GraphImages/'+str(gid))))+".png"
         plt.savefig('/homes/yinht/lfs/Workspace/OCTAL/GNNLTL_NeurIPS_Code/GraphImages/'+str(gid)+'/'+fname, format="PNG")
         plt.clf()
-
-
-
+        exit()
 
 
 
@@ -103,13 +103,15 @@ class NetBA(nn.Module):
                         vAttriButes.append(1)
                 #edges
                 for innd in range(edges):
-                    elem = countEdges + innd - count
-                    eList.append([edge_index[0][elem].item(), edge_index[1][elem].item()])
+                    elem = countEdges + innd
+                    eList.append([edge_index[0][elem].item() - count, edge_index[1][elem].item() - count])
                 
-                self.saveGraph(vAttriButes,eList,gid[count].item(),start_nodes[count].item())
+                self.saveGraph(vAttriButes,eList,gid[ind].item(),start_nodes[ind].item())
                 lenPre += 1
                 if(lenPre == len(gIDs)):
                     break
+                count += nodes
+                countEdges += edges
 
 
 

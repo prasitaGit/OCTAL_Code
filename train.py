@@ -5,16 +5,18 @@ from torch_geometric.data import Data
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import time
 import numpy as np
 import torch.nn.functional as F
-from accTest import *
-#from accValid import *
+#from accTest import *
+from accValid import *
 import logging
 
 def trainCode(modelClassifier, data_train, valid_loader, args, device, logger):#train_loader, valid_loader, test_loader, device):
     
     optimizer = torch.optim.Adam(modelClassifier.parameters(), lr=args.lr)#, weight_decay=1e-6)
     lossfunc = torch.nn.BCEWithLogitsLoss()
+    #lossfunc = torch.nn.BCELoss()
     loss_train = []
     trainAccList = []
     maxacc = 0
@@ -26,6 +28,7 @@ def trainCode(modelClassifier, data_train, valid_loader, args, device, logger):#
     lenOne = len(data_train)
     train_loader = torch_geometric.data.DataLoader(data_train, batch_size=args.batch_size, shuffle = True)
     modelClassifier.train()
+    listNot = []
     for epoch in range(args.epoch):
     
         totalLoss = 0
@@ -46,17 +49,26 @@ def trainCode(modelClassifier, data_train, valid_loader, args, device, logger):#
             np.random.shuffle(netList)
             print("Train size: ", len(netList))
             train_loader = torch_geometric.data.DataLoader(netList, batch_size=args.batch_size, shuffle = False)
+        start = time.time()
         #call accuracy on validation
-        for batchBA,batchLTL,label in train_loader:
+        for batchBA,batchLTL,label,node_num,edge_num,start_node,gid,lSys,lSpec in train_loader:
             batchBA = batchBA.to(device)
-            #batchLTL = batchLTL.to(device)
+            batchLTL = batchLTL.to(device)
             label = label.to(device)
             optimizer.zero_grad()
-            outClassifier = modelClassifier(batchBA).squeeze()
+            #for linkPred only
+            #outClassifier = modelClassifier(batchBA,batchLTL).squeeze()
+            outClassifier = modelClassifier(batchBA,node_num,edge_num,start_node,gid,False).squeeze()
+            #pred_tag = outClassifier > 0.5
             pred_tag = torch.sigmoid(outClassifier) > 0.5
             calcacc += (pred_tag == label).sum().item()
             loss = lossfunc(outClassifier, label.float())
             loss.backward()
+            if epoch > (args.epoch - 1):
+                for i in range(len(pred_tag)):
+                    if(pred_tag[i] != label[i]):
+                        listNot.append(gid[i].item())
+
             if torch.isnan(loss):
                 print('Loss NaN')
             #if torch.isnan(outClassifier.grad).any():
@@ -64,7 +76,7 @@ def trainCode(modelClassifier, data_train, valid_loader, args, device, logger):#
             optimizer.step()
             totalLoss += loss.item()*len(label)
             numlabels += len(label)
-
+        evalTime = time.time() - start
         #store the loss val
         lossVal = totalLoss/numlabels
         trainacc = calcacc/numlabels
@@ -91,6 +103,7 @@ def trainCode(modelClassifier, data_train, valid_loader, args, device, logger):#
         print(f"Epoch: {epoch} Loss: {loss_train[-1]:.4f} Accuracy: {trainacc:.4f}")
         logger.info("Epoch: "+ str(epoch) + " Loss: "+str(loss_train[-1]) + " Accuracy: " + str(trainacc))
     print("Completed training...")
+    print(listNot)
 
     #construct graph
     # plotting the points
