@@ -3,6 +3,7 @@ from train import *
 #from mlpExp import *
 from mlp import *
 #from mlpGCN import *
+from GNNMLP import *
 import random
 import torch
 import time
